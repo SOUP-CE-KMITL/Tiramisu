@@ -1,7 +1,7 @@
 #! /usr/bin/env stap
 global reads, writes, totals
 
-probe begin { printf("starting probe\n") }
+probe begin { printf("[\n") }
 
 
 probe vfs.read.return {
@@ -28,7 +28,7 @@ probe end {
     "name", "read", "KB tot", "B avg", "write", "KB tot", "B avg")
   */
   foreach (name in totals- limit 20) { # sort by total io
-    printf("{\"name\":\"%d\", \"read\":%8d, \"read_total\":%8d, \"read_avg\":%8d, \"write\":%8d, \"write_total\":%8d, \"write_avg\":%8d},\n",
+    printf("{\"pid\":\"%d\", \"read\":%8d, \"read_total\":%8d, \"read_avg\":%8d, \"write\":%8d, \"write_total\":%8d, \"write_avg\":%8d},\n",
       name,
       @count(reads[name]),
       (@count(reads[name]) ? @sum(reads[name])>>10 : 0 ),
@@ -37,6 +37,6 @@ probe end {
       (@count(writes[name]) ? @sum(writes[name])>>10 : 0 ),
       (@count(writes[name]) ? @avg(writes[name]) : 0 ))
   }
-  printf("{}");
+  printf("{}\n]");
 }
 
