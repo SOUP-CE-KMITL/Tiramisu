@@ -18,11 +18,13 @@ import (
 	"gopkg.in/pipe.v2"
 )
 
-const (
-	DB_USER     = "postgres"
-	DB_PASSWORD = "12344321"
-	DB_NAME     = "tiramisu"
-)
+type ProcessLatency struct {
+	Timestamp int64  `json:timestamp`
+	Pid       int    `json:pid`
+	PPid      int    `json:ppid`
+	Execname  string `json:execname`
+	Latency   int    `json:latency`
+}
 
 type ProcessIOPS struct {
 	Pid        string `json:pid`
@@ -32,6 +34,11 @@ type ProcessIOPS struct {
 	Write      int    `json:write`
 	WriteTotal int    `json:write_total`
 	WriteAvg   int    `json:write_avg`
+}
+
+type Pair struct {
+	Value int
+	Count int
 }
 
 func GetArguments(pid int) []string {
@@ -61,7 +68,25 @@ func timedSIGTERM(p *os.Process, d time.Duration) {
 	}
 }
 
-func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser) (bool, error) {
+func ProbeLatency(cmd *exec.Cmd, d time.Duration, rchan chan Pair, wchan chan Pair) {
+	latencyPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Fatalf("error: %v\n", err)
+	}
+	err = cmd.Start()
+	if err != nil {
+		log.Fatalf("error: %v\n", err)
+	}
+
+	latencyJSONDecoder(latencyPipe)
+
+	err = cmd.Wait()
+	if err != nil {
+		log.Fatalf("error: %v\n", err)
+	}
+}
+
+func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair) (bool, error) {
 	err := cmd.Start()
 	if err != nil {
 		return false, fmt.Errorf("%v: cannot start cmd", err.Error())
@@ -70,7 +95,7 @@ func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser) (bool, 
 	// MUST BE goroutine!!
 	go timedSIGTERM(cmd.Process, d)
 
-	iopsJSONDecoder(rc)
+	iopsJSONDecoder(rc, cHDD, cSSD)
 
 	err = cmd.Wait()
 	if err != nil {
@@ -79,7 +104,7 @@ func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser) (bool, 
 	return cmd.ProcessState.Success(), nil
 }
 
-func RestartProcess(cmd *exec.Cmd, d time.Duration) {
+func RestartProcess(cmd *exec.Cmd, d time.Duration, cHDD chan Pair, cSSD chan Pair) {
 	status := true
 	var err error
 	var iopsPipe io.ReadCloser
@@ -92,13 +117,44 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration) {
 				log.Fatalf("error %v\n", err)
 			}
 		}
-		status, err = SubRestartProcess(cmd, d, iopsPipe)
+		status, err = SubRestartProcess(cmd, d, iopsPipe, cHDD, cSSD)
 		log.Println("restarting...")
 		log.Printf("status = %v, error = %v\n", status, err)
 	}
 }
 
-func iopsJSONDecoder(rc io.ReadCloser) {
+func latencyJSONDecoder(rc io.ReadCloser) {
+	latencyDecoder := json.NewDecoder(rc)
+	openToken, err := latencyDecoder.Token()
+	if err != nil {
+		log.Fatalf("error: %v/n", err)
+	}
+	var _ = openToken
+	cumulativeLatency := 0
+	cumulativeLatencyCount := 0
+
+	for latencyDecoder.More() {
+		var message ProcessLatency
+		err := latencyDecoder.Decode(&message)
+		if err != nil {
+			log.Fatalf("error: %v\n", err)
+		}
+		if message.Execname == "qemu-kvm" {
+			fmt.Printf("PID: [%v], name: [%v], latency: [%v]\n", message.Pid, message.Execname, message.Latency)
+
+			cumulativeLatencyCount += 1
+			cumulativeLatency += message.Latency
+		}
+	}
+	closeToken, err := latencyDecoder.Token()
+	if err != nil {
+		log.Fatalf("error: %v\n", err)
+	}
+	var _ = closeToken
+	fmt.Printf("cL = [%v], cLC = [%v]\n", cumulativeLatency, cumulativeLatencyCount)
+}
+
+func iopsJSONDecoder(rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair) {
 	iopsDecoder := json.NewDecoder(rc)
 	openToken, err := iopsDecoder.Token()
 	if err != nil {
@@ -150,11 +206,19 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 	var _ = closeToken
 	fmt.Printf("SSD: cIOPS = %v cIOPSCount = %v\n", cumulativeIOPSSSD, cumulativeIOPSSSDCount)
 	fmt.Printf("HDD: cIOPS = %v cIOPSCount = %v\n", cumulativeIOPSHDD, cumulativeIOPSHDDCount)
+	cSSD <- Pair{Value: cumulativeIOPSSSD, Count: cumulativeIOPSSSDCount}
+	cHDD <- Pair{Value: cumulativeIOPSHDD, Count: cumulativeIOPSHDDCount}
 }
 
 func main() {
 	dbinfo := fmt.Sprintf("user=postgres password=12344321 dbname=tiramisu sslmode=disable")
 	db, err := sql.Open("postgres", dbinfo)
+
+	IOPSSSDchan := make(chan Pair)
+	IOPSHDDchan := make(chan Pair)
+	latencyReadChan := make(chan Pair)
+	latencyWriteChan := make(chan Pair)
+
 	if err != nil {
 		panic(err)
 	}
@@ -187,6 +251,10 @@ func main() {
 
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
+	latencyReadCmd := exec.Command("stap", "latency_diskread.stp")
+	// latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
 
-	RestartProcess(iopscmd, 8*time.Second)
+	RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan)
+	ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, latencyWriteChan)
+	var _ = iopscmd
 }

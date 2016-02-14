@@ -222,7 +222,7 @@ if __name__ == "__main__":
 
 	arg 		= sys.argv
 	name 		= arg[1]
-	
+
 	get_state = get_state(name, c)
 	latency_vm 	= get_state["latency_vm"]
 	iops_vm 	= get_state["iops_vm"]
