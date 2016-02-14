@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,7 +13,15 @@ import (
 	"syscall"
 	"time"
 
+	_ "github.com/lib/pq"
+
 	"gopkg.in/pipe.v2"
+)
+
+const (
+	DB_USER     = "postgres"
+	DB_PASSWORD = "12344321"
+	DB_NAME     = "tiramisu"
 )
 
 type ProcessIOPS struct {
@@ -77,7 +86,6 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration) {
 	for status != false && err == nil {
 		if status == true {
 			cmd = exec.Command(cmd.Path, cmd.Args[1])
-			// cmd.Stdout = iopsJSONDecoder
 			cmd.Stderr = os.Stderr
 			iopsPipe, err = cmd.StdoutPipe()
 			if err != nil {
@@ -96,7 +104,8 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 	if err != nil {
 		log.Fatalf("error reading openToken: %v\n", err)
 	}
-	fmt.Printf("%v %T\n", openToken, openToken)
+	// fmt.Printf("%v %T\n", openToken, openToken)
+	var _ = openToken
 
 	for iopsDecoder.More() {
 		var message ProcessIOPS
@@ -104,7 +113,7 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 		if err != nil {
 			log.Fatal(err)
 		}
-		fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
+		// fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
 		var PIDNumber int
 		if message.Pid != "" {
 			PIDNumber, err = strconv.Atoi(message.Pid)
@@ -112,17 +121,56 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 		if err != nil {
 			log.Fatalf("Error: %v\n", err)
 		}
-		fmt.Printf("arguments: %v\n", GetArguments(PIDNumber))
+		argsList := GetArguments(PIDNumber)
+		if len(argsList) != 0 {
+			if argsList[0] == "/usr/libexec/qemu-kvm" {
+				fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
+				fmt.Printf("arguments: count: %v\n%v %v\n", len(argsList), argsList[2], argsList[28])
+			}
+		}
 	}
 
 	closeToken, err := iopsDecoder.Token()
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Printf("%v %T\n", closeToken, closeToken)
+	// fmt.Printf("%v %T\n", closeToken, closeToken)
+	var _ = closeToken
 }
 
 func main() {
+	dbinfo := fmt.Sprintf("user=postgres password=12344321 dbname=tiramisu sslmode=disable")
+	db, err := sql.Open("postgres", dbinfo)
+	if err != nil {
+		panic(err)
+	}
+	defer db.Close()
+	err = db.Ping()
+	if err != nil {
+		log.Fatalf("Error: Could not establish a connection with the database %v\n", err)
+	}
+	rows, err := db.Query(`SELECT * FROM tiramisu_state`)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var vm_name string
+		var latency float64
+		var iops float64
+		var latency_hdd float64
+		var iops_hdd float64
+		var latency_ssd float64
+		var iops_ssd float64
+
+		err := rows.Scan(&vm_name, &latency, &iops, &latency_hdd, &iops_hdd, &latency_ssd, &iops_ssd)
+		if err != nil {
+			log.Fatalf("error: %v\n", err)
+		}
+		fmt.Printf("%12v | %8v | %8v | %8v | %8v | %8v | %8v\n", vm_name, latency, iops, latency_hdd, iops_hdd, latency_ssd, iops_ssd)
+	}
+
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 
