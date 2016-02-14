@@ -7,8 +7,12 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
+
+	"gopkg.in/pipe.v2"
 )
 
 type ProcessIOPS struct {
@@ -19,6 +23,22 @@ type ProcessIOPS struct {
 	Write      int    `json:write`
 	WriteTotal int    `json:write_total`
 	WriteAvg   int    `json:write_avg`
+}
+
+func GetArguments(pid int) []string {
+	if pid == 0 {
+		return nil
+	}
+	filename := "/proc/" + strconv.Itoa(pid) + "/cmdline"
+	p := pipe.Line(
+		pipe.ReadFile(filename),
+		pipe.Exec("strings", "-1"),
+	)
+	output, err := pipe.CombinedOutput(p)
+	if err != nil {
+		fmt.Printf("error:[%v]\n", err)
+	}
+	return strings.Fields(string(output))
 }
 
 func timedSIGTERM(p *os.Process, d time.Duration) {
@@ -85,6 +105,14 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 			log.Fatal(err)
 		}
 		fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
+		var PIDNumber int
+		if message.Pid != "" {
+			PIDNumber, err = strconv.Atoi(message.Pid)
+		}
+		if err != nil {
+			log.Fatalf("Error: %v\n", err)
+		}
+		fmt.Printf("arguments: %v\n", GetArguments(PIDNumber))
 	}
 
 	closeToken, err := iopsDecoder.Token()
