@@ -107,6 +107,10 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 	// fmt.Printf("%v %T\n", openToken, openToken)
 	var _ = openToken
 
+	cumulativeIOPSSSD := 0
+	cumulativeIOPSSSDCount := 0
+	cumulativeIOPSHDD := 0
+	cumulativeIOPSHDDCount := 0
 	for iopsDecoder.More() {
 		var message ProcessIOPS
 		err := iopsDecoder.Decode(&message)
@@ -124,8 +128,16 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 		argsList := GetArguments(PIDNumber)
 		if len(argsList) != 0 {
 			if argsList[0] == "/usr/libexec/qemu-kvm" {
-				fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
+				if strings.Contains(argsList[28], "SSD") {
+					cumulativeIOPSSSDCount += 1
+					cumulativeIOPSSSD += message.Read + message.Write
+				} else {
+					cumulativeIOPSHDDCount += 1
+					cumulativeIOPSHDD += message.Read + message.Write
+				}
+				// fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
 				fmt.Printf("arguments: count: %v\n%v %v\n", len(argsList), argsList[2], argsList[28])
+				// fmt.Printf("it is ssd?: %v\n", strings.Contains(argsList[28], "SSD"))
 			}
 		}
 	}
@@ -136,6 +148,8 @@ func iopsJSONDecoder(rc io.ReadCloser) {
 	}
 	// fmt.Printf("%v %T\n", closeToken, closeToken)
 	var _ = closeToken
+	fmt.Printf("SSD: cIOPS = %v cIOPSCount = %v\n", cumulativeIOPSSSD, cumulativeIOPSSSDCount)
+	fmt.Printf("HDD: cIOPS = %v cIOPSCount = %v\n", cumulativeIOPSHDD, cumulativeIOPSHDDCount)
 }
 
 func main() {
@@ -174,5 +188,5 @@ func main() {
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 
-	RestartProcess(iopscmd, 4*time.Second)
+	RestartProcess(iopscmd, 8*time.Second)
 }
