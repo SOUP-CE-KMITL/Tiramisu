@@ -1,13 +1,25 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
 )
+
+type ProcessIOPS struct {
+	Pid        string `json:pid`
+	Read       int    `json:read`
+	ReadTotal  int    `json:read_total`
+	ReadAvg    int    `json:read_avg`
+	Write      int    `json:write`
+	WriteTotal int    `json:write_total`
+	WriteAvg   int    `json:write_avg`
+}
 
 func timedSIGTERM(p *os.Process, d time.Duration) {
 	log.Println("couting down:", d)
@@ -20,7 +32,7 @@ func timedSIGTERM(p *os.Process, d time.Duration) {
 	}
 }
 
-func SubRestartProcess(cmd *exec.Cmd, d time.Duration) (bool, error) {
+func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser) (bool, error) {
 	err := cmd.Start()
 	if err != nil {
 		//log.Fatalf("Error: [%v]\n", err)
@@ -28,7 +40,9 @@ func SubRestartProcess(cmd *exec.Cmd, d time.Duration) (bool, error) {
 	}
 
 	// goroutine
-	timedSIGTERM(cmd.Process, d)
+	go timedSIGTERM(cmd.Process, d)
+
+	foo(rc)
 
 	err = cmd.Wait()
 	if err != nil {
@@ -38,47 +52,76 @@ func SubRestartProcess(cmd *exec.Cmd, d time.Duration) (bool, error) {
 	return cmd.ProcessState.Success(), nil
 }
 
-func RenewCmd(cmd *exec.Cmd) *exec.Cmd {
-	var newCmd *exec.Cmd
-	*newCmd = *cmd
-	return newCmd
-}
-
 func RestartProcess(cmd *exec.Cmd, d time.Duration) {
 	status := true
 	var err error
+	var iopsPipe io.ReadCloser
 	for status != false && err == nil {
-		status, err = SubRestartProcess(cmd, d)
-		log.Println("restarting...")
-		log.Printf("status = %v, error = %v\n", status, err)
 		if status == true {
 			cmd = exec.Command(cmd.Path, cmd.Args[1])
-			cmd.Stdout = os.Stdout
+			// cmd.Stdout = foo
 			cmd.Stderr = os.Stderr
+			iopsPipe, err = cmd.StdoutPipe()
+			if err != nil {
+				log.Fatalf("error %v\n", err)
+			}
 		}
+		status, err = SubRestartProcess(cmd, d, iopsPipe)
+		log.Println("restarting...")
+		log.Printf("status = %v, error = %v\n", status, err)
 	}
+}
+
+func foo(rc io.ReadCloser) {
+	//rc := strings.NewReader(op)
+	iopsDecoder := json.NewDecoder(rc)
+	openToken, err := iopsDecoder.Token()
+	if err != nil {
+		log.Fatalf("error reading openToken: %v\n", err)
+	}
+	fmt.Printf("%v %T\n", openToken, openToken)
+
+	for iopsDecoder.More() {
+		var message ProcessIOPS
+		err := iopsDecoder.Decode(&message)
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
+	}
+
+	closeToken, err := iopsDecoder.Token()
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%v %T\n", closeToken, closeToken)
 }
 
 func main() {
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
-	iopscmd.Stdout = os.Stdout
-	iopscmd.Stderr = os.Stderr
 
-	RestartProcess(iopscmd, 10*time.Second)
+	RestartProcess(iopscmd, 4*time.Second)
 
-	// err := iopscmd.Start()
-	// log.Println("pid:", iopscmd.Process.Pid)
-
-	// timedSIGTERM(iopscmd.Process, 10*time.Second)
-
+	// iopsDecoder := json.NewDecoder(iopsPipe)
+	// openToken, err := iopsDecoder.Token()
 	// if err != nil {
-	// 	panic(err)
+	// 	log.Fatalf("error reading openToken: %v\n", err)
+	// }
+	// fmt.Printf("%v %T\n", openToken, openToken)
+
+	// for iopsDecoder.More() {
+	// 	var message ProcessIOPS
+	// 	err := iopsDecoder.Decode(&message)
+	// 	if err != nil {
+	// 		log.Fatal(err)
+	// 	}
+	// 	fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
 	// }
 
-	// err = iopscmd.Wait()
+	// closeToken, err := iopsDecoder.Token()
 	// if err != nil {
-	// 	panic(err)
+	// 	log.Fatal(err)
 	// }
-	// fmt.Printf("process status : %v\n", iopscmd.ProcessState.Success())
+	// fmt.Printf("%v %T\n", closeToken, closeToken)
 }
