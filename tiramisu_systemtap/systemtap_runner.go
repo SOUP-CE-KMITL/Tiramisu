@@ -35,18 +35,16 @@ func timedSIGTERM(p *os.Process, d time.Duration) {
 func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser) (bool, error) {
 	err := cmd.Start()
 	if err != nil {
-		//log.Fatalf("Error: [%v]\n", err)
 		return false, fmt.Errorf("%v: cannot start cmd", err.Error())
 	}
 
-	// goroutine
+	// MUST BE goroutine!!
 	go timedSIGTERM(cmd.Process, d)
 
-	foo(rc)
+	iopsJSONDecoder(rc)
 
 	err = cmd.Wait()
 	if err != nil {
-		//log.Fatalf("Error: [%v]\n", err)
 		return false, err
 	}
 	return cmd.ProcessState.Success(), nil
@@ -59,7 +57,7 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration) {
 	for status != false && err == nil {
 		if status == true {
 			cmd = exec.Command(cmd.Path, cmd.Args[1])
-			// cmd.Stdout = foo
+			// cmd.Stdout = iopsJSONDecoder
 			cmd.Stderr = os.Stderr
 			iopsPipe, err = cmd.StdoutPipe()
 			if err != nil {
@@ -72,8 +70,7 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration) {
 	}
 }
 
-func foo(rc io.ReadCloser) {
-	//rc := strings.NewReader(op)
+func iopsJSONDecoder(rc io.ReadCloser) {
 	iopsDecoder := json.NewDecoder(rc)
 	openToken, err := iopsDecoder.Token()
 	if err != nil {
@@ -102,26 +99,4 @@ func main() {
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 
 	RestartProcess(iopscmd, 4*time.Second)
-
-	// iopsDecoder := json.NewDecoder(iopsPipe)
-	// openToken, err := iopsDecoder.Token()
-	// if err != nil {
-	// 	log.Fatalf("error reading openToken: %v\n", err)
-	// }
-	// fmt.Printf("%v %T\n", openToken, openToken)
-
-	// for iopsDecoder.More() {
-	// 	var message ProcessIOPS
-	// 	err := iopsDecoder.Decode(&message)
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-	// 	fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
-	// }
-
-	// closeToken, err := iopsDecoder.Token()
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("%v %T\n", closeToken, closeToken)
 }
