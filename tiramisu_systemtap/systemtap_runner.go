@@ -68,7 +68,7 @@ func timedSIGTERM(p *os.Process, d time.Duration) {
 	}
 }
 
-func ProbeLatency(cmd *exec.Cmd, d time.Duration, rchan chan Pair, wchan chan Pair) {
+func ProbeLatency(cmd *exec.Cmd, d time.Duration, ch chan Pair) {
 	latencyPipe, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Fatalf("error: %v\n", err)
@@ -78,7 +78,7 @@ func ProbeLatency(cmd *exec.Cmd, d time.Duration, rchan chan Pair, wchan chan Pa
 		log.Fatalf("error: %v\n", err)
 	}
 
-	latencyJSONDecoder(latencyPipe)
+	latencyJSONDecoder(latencyPipe, ch)
 
 	err = cmd.Wait()
 	if err != nil {
@@ -123,7 +123,7 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration, cHDD chan Pair, cSSD chan Pa
 	}
 }
 
-func latencyJSONDecoder(rc io.ReadCloser) {
+func latencyJSONDecoder(rc io.ReadCloser, c chan Pair) {
 	latencyDecoder := json.NewDecoder(rc)
 	openToken, err := latencyDecoder.Token()
 	if err != nil {
@@ -152,6 +152,7 @@ func latencyJSONDecoder(rc io.ReadCloser) {
 	}
 	var _ = closeToken
 	fmt.Printf("cL = [%v], cLC = [%v]\n", cumulativeLatency, cumulativeLatencyCount)
+	c <- Pair{Value: cumulativeLatency, Count: cumulativeLatencyCount}
 }
 
 func iopsJSONDecoder(rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair) {
@@ -252,9 +253,10 @@ func main() {
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 	latencyReadCmd := exec.Command("stap", "latency_diskread.stp")
-	// latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
+	latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
 
-	RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan)
-	ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, latencyWriteChan)
+	go RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan)
+	go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan)
+	go ProbeLatency(latencyWriteCmd, 8*time.Second, latencyWriteChan)
 	var _ = iopscmd
 }
