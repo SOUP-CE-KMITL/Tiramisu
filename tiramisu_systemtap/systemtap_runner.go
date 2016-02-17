@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -58,11 +59,8 @@ func GetArguments(pid int) []string {
 }
 
 func timedSIGTERM(p *os.Process, d time.Duration) {
-	log.Println("couting down:", d)
 	_ = <-time.After(d)
-	log.Println("count finished, sending signal")
 	err := p.Signal(syscall.SIGTERM)
-	log.Println("signal sent")
 	if err != nil {
 		log.Panic(err)
 	}
@@ -78,12 +76,56 @@ func ProbeLatency(cmd *exec.Cmd, d time.Duration, ch chan Pair) {
 		log.Fatalf("error: %v\n", err)
 	}
 
-	latencyJSONDecoder(latencyPipe, ch)
+	latencyJSONDecoder(latencyPipe, d, ch)
 
 	err = cmd.Wait()
 	if err != nil {
 		log.Fatalf("error: %v\n", err)
 	}
+}
+
+func latencyJSONDecoder(rc io.ReadCloser, d time.Duration, c chan Pair) {
+	latencyDecoder := json.NewDecoder(rc)
+	openToken, err := latencyDecoder.Token()
+	if err != nil {
+		log.Fatalf("error: %v/n", err)
+	}
+	var _ = openToken
+	cumulativeLatency := 0
+	cumulativeLatencyCount := 0
+
+	// dispatcher & resetter
+	var mutex = &sync.Mutex{}
+	ticker := time.NewTicker(d)
+	go func(c chan Pair) {
+		for _ = range ticker.C {
+			mutex.Lock()
+			// log.Printf("latency, count: [%v] [%v]\n", cumulativeLatency, cumulativeLatencyCount)
+			c <- Pair{Value: cumulativeLatency, Count: cumulativeLatencyCount}
+			cumulativeLatency = 0
+			cumulativeLatencyCount = 0
+			mutex.Unlock()
+		}
+	}(c)
+
+	for latencyDecoder.More() {
+		var message ProcessLatency
+		err := latencyDecoder.Decode(&message)
+		if err != nil {
+			log.Fatalf("error: %v\n", err)
+		}
+		if message.Execname == "qemu-kvm" {
+			//fmt.Printf("PID: [%v], name: [%v], latency: [%v]\n", message.Pid, message.Execname, message.Latency)
+
+			cumulativeLatencyCount += 1
+			cumulativeLatency += message.Latency
+		}
+	}
+	closeToken, err := latencyDecoder.Token()
+	if err != nil {
+		log.Fatalf("error: %v\n", err)
+	}
+	var _ = closeToken
 }
 
 func SubRestartProcess(cmd *exec.Cmd, d time.Duration, rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair) (bool, error) {
@@ -118,41 +160,9 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration, cHDD chan Pair, cSSD chan Pa
 			}
 		}
 		status, err = SubRestartProcess(cmd, d, iopsPipe, cHDD, cSSD)
-		log.Println("restarting...")
-		log.Printf("status = %v, error = %v\n", status, err)
+		// log.Println("restarting...")
+		// log.Printf("status = %v, error = %v\n", status, err)
 	}
-}
-
-func latencyJSONDecoder(rc io.ReadCloser, c chan Pair) {
-	latencyDecoder := json.NewDecoder(rc)
-	openToken, err := latencyDecoder.Token()
-	if err != nil {
-		log.Fatalf("error: %v/n", err)
-	}
-	var _ = openToken
-	cumulativeLatency := 0
-	cumulativeLatencyCount := 0
-
-	for latencyDecoder.More() {
-		var message ProcessLatency
-		err := latencyDecoder.Decode(&message)
-		if err != nil {
-			log.Fatalf("error: %v\n", err)
-		}
-		if message.Execname == "qemu-kvm" {
-			fmt.Printf("PID: [%v], name: [%v], latency: [%v]\n", message.Pid, message.Execname, message.Latency)
-
-			cumulativeLatencyCount += 1
-			cumulativeLatency += message.Latency
-		}
-	}
-	closeToken, err := latencyDecoder.Token()
-	if err != nil {
-		log.Fatalf("error: %v\n", err)
-	}
-	var _ = closeToken
-	fmt.Printf("cL = [%v], cLC = [%v]\n", cumulativeLatency, cumulativeLatencyCount)
-	c <- Pair{Value: cumulativeLatency, Count: cumulativeLatencyCount}
 }
 
 func iopsJSONDecoder(rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair) {
@@ -193,7 +203,7 @@ func iopsJSONDecoder(rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair) {
 					cumulativeIOPSHDD += message.Read + message.Write
 				}
 				// fmt.Printf("PID: [%v], IO Read: [%v] IO Write [%v]\n", message.Pid, message.Read, message.Write)
-				fmt.Printf("arguments: count: %v\n%v %v\n", len(argsList), argsList[2], argsList[28])
+				// fmt.Printf("arguments: count: %v\n%v %v\n", len(argsList), argsList[2], argsList[28])
 				// fmt.Printf("it is ssd?: %v\n", strings.Contains(argsList[28], "SSD"))
 			}
 		}
@@ -258,5 +268,17 @@ func main() {
 	go RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan)
 	go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan)
 	go ProbeLatency(latencyWriteCmd, 8*time.Second, latencyWriteChan)
+	for {
+		select {
+		case x := <-IOPSHDDchan:
+			fmt.Printf("iops hdd: c = %v v = %v\n", x.Count, x.Value)
+		case x := <-IOPSSSDchan:
+			fmt.Printf("iops ssd: c = %v v = %v\n", x.Count, x.Value)
+		case x := <-latencyReadChan:
+			fmt.Printf("latency read c = %v v = %v\n", x.Count, x.Value)
+		case x := <-latencyWriteChan:
+			fmt.Printf("latency write c = %v v = %v\n", x.Count, x.Value)
+		}
+	}
 	var _ = iopscmd
 }
