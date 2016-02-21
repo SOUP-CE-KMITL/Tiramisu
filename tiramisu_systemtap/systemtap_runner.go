@@ -92,10 +92,9 @@ func ProbeLatency(cmd *exec.Cmd, d time.Duration, ch chan Pair, cVM chan VMInfor
 		log.Fatalf("error: %v\n", err)
 	}
 
+	go timedSIGTERM(cmd.Process, 10*time.Second)
 	latencyJSONDecoder(latencyPipe, d, ch, cVM)
 
-	<-time.After(10 * time.Second)
-	cmd.Process.Signal(os.SIGTERM)
 	err = cmd.Wait()
 	if err != nil {
 		log.Fatalf("error: %v\n", err)
@@ -327,7 +326,7 @@ func main() {
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 	latencyReadCmd := exec.Command("stap", "latency_diskread.stp")
-	//latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
+	latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
 
 	var _ = iopscmd
 	var _ = latencyReadCmd
