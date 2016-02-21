@@ -305,6 +305,7 @@ func main() {
 	}
 	defer rows.Close()
 
+	fmt.Printf("%12v | %12v | %12v | %12v | %12v | %12v | %12v\n", "vm_name", "latency", "iops", "latency_hdd", "iops_hdd", "latency_ssd", "iops_ssd")
 	for rows.Next() {
 		var vm_name string
 		var latency float64
@@ -318,7 +319,7 @@ func main() {
 		if err != nil {
 			log.Fatalf("error: %v\n", err)
 		}
-		fmt.Printf("%12v | %8v | %8v | %8v | %8v | %8v | %8v\n", vm_name, latency, iops, latency_hdd, iops_hdd, latency_ssd, iops_ssd)
+		fmt.Printf("%12v | %12v | %12v | %12v | %12v | %12v | %12v\n", vm_name, latency, iops, latency_hdd, iops_hdd, latency_ssd, iops_ssd)
 	}
 
 	fmt.Print()
@@ -329,15 +330,76 @@ func main() {
 	var _ = latencyReadCmd
 	var _ = latencyWriteCmd
 	go RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan, vmIOPSInfoChan)
-	// go ProbeLatency(latencyReadCmd, 10*time.Second, latencyReadChan, vmLatencyReadInfoChan)
+	// go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, vmLatencyReadInfoChan)
 	// go ProbeLatency(latencyWriteCmd, 8*time.Second, latencyWriteChan, vmLatencyWriteInfoChan)
 	go func() {
 		for {
 			select {
 			case x := <-IOPSHDDchan:
 				fmt.Printf("iops hdd: c = %v v = %v\n", x.Count, x.Value)
+
+				tx, err := db.Begin()
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
+				defer tx.Rollback()
+				stmt, err := tx.Prepare(`update tiramisu_state set iops_hdd=$1 where vm_name=$2`)
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
+				defer stmt.Close()
+
+				for _, e := range vmInfos {
+					if e.ISSSD {
+						tmp := vmInfos[e.Name]
+						tmp.IOPSHDD = x.Value / x.Count
+						vmInfos[e.Name] = tmp
+
+						res, err := stmt.Exec(float64(vmInfos[e.Name].IOPSHDD), e.Name)
+						fmt.Printf("[[%v]]\n", res)
+						if err != nil {
+							log.Fatalf("IOPSHDDchan db error: %v\n", err)
+						}
+					}
+				}
+				err = tx.Commit()
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
+
 			case x := <-IOPSSSDchan:
 				fmt.Printf("iops ssd: c = %v v = %v\n", x.Count, x.Value)
+
+				tx, err := db.Begin()
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
+				defer tx.Rollback()
+				stmt, err := tx.Prepare(`update tiramisu_state set iops_ssd=$1 where vm_name=$2`)
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
+				defer stmt.Close()
+
+				for _, e := range vmInfos {
+					if !e.ISSSD {
+						tmp := vmInfos[e.Name]
+						tmp.IOPSSSD = x.Value / x.Count
+						vmInfos[e.Name] = tmp
+
+						res, err := stmt.Exec(float64(vmInfos[e.Name].IOPSSSD), e.Name)
+						fmt.Printf("[[%v]]\n", res)
+						if err != nil {
+							log.Fatalf("IOPSSDchan db error: %v\n", err)
+						}
+					}
+				}
+
+				err = tx.Commit()
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
+
 			case x := <-vmIOPSInfoChan:
 				// If exist
 				if _, ok := vmInfos[x.Name]; ok {
@@ -364,19 +426,21 @@ func main() {
 				if err != nil {
 					log.Fatalf("dberr: %v\n", err)
 				}
+				defer txn.Rollback()
 				stmt, err := txn.Prepare(`update tiramisu_state set iops=$1 where vm_name=$2`)
 				if err != nil {
 					log.Fatalf("dberror: %v\n", err)
 				}
+				// defer stmt.Close()
 				res, err := stmt.Exec(float64(vmInfos[x.Name].IOPS), x.Name)
 				fmt.Printf("[[%v]]\n", res)
 				if err != nil {
 					panic(err)
 				}
-				err = stmt.Close()
-				if err != nil {
-					log.Fatalf("dberr %v\n", err)
-				}
+				// err = stmt.Close()
+				// if err != nil {
+				// 	log.Fatalf("dberr %v\n", err)
+				// }
 				err = txn.Commit()
 				if err != nil {
 					log.Fatalf("dberr %v\n", err)
