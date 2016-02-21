@@ -94,6 +94,8 @@ func ProbeLatency(cmd *exec.Cmd, d time.Duration, ch chan Pair, cVM chan VMInfor
 
 	latencyJSONDecoder(latencyPipe, d, ch, cVM)
 
+	<-time.After(10 * time.Second)
+	cmd.Process.Signal(os.SIGTERM)
 	err = cmd.Wait()
 	if err != nil {
 		log.Fatalf("error: %v\n", err)
@@ -325,12 +327,13 @@ func main() {
 	fmt.Print()
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 	latencyReadCmd := exec.Command("stap", "latency_diskread.stp")
-	latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
+	//latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
 
+	var _ = iopscmd
 	var _ = latencyReadCmd
 	var _ = latencyWriteCmd
 	go RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan, vmIOPSInfoChan)
-	// go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, vmLatencyReadInfoChan)
+	go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, vmLatencyReadInfoChan)
 	// go ProbeLatency(latencyWriteCmd, 8*time.Second, latencyWriteChan, vmLatencyWriteInfoChan)
 	go func() {
 		for {
@@ -352,11 +355,13 @@ func main() {
 				for _, e := range vmInfos {
 					if e.ISSSD {
 						tmp := vmInfos[e.Name]
-						tmp.IOPSHDD = x.Value / x.Count
+						if x.Count != 0 {
+							tmp.IOPSHDD = x.Value / x.Count
+						}
 						vmInfos[e.Name] = tmp
 
-						res, err := stmt.Exec(float64(vmInfos[e.Name].IOPSHDD), e.Name)
-						fmt.Printf("[[%v]]\n", res)
+						_, err := stmt.Exec(float64(vmInfos[e.Name].IOPSHDD), e.Name)
+						//fmt.Printf("[[%v]]\n", res)
 						if err != nil {
 							log.Fatalf("IOPSHDDchan db error: %v\n", err)
 						}
@@ -384,11 +389,13 @@ func main() {
 				for _, e := range vmInfos {
 					if !e.ISSSD {
 						tmp := vmInfos[e.Name]
-						tmp.IOPSSSD = x.Value / x.Count
+						if x.Count != 0 {
+							tmp.IOPSSSD = x.Value / x.Count
+						}
 						vmInfos[e.Name] = tmp
 
-						res, err := stmt.Exec(float64(vmInfos[e.Name].IOPSSSD), e.Name)
-						fmt.Printf("[[%v]]\n", res)
+						_, err := stmt.Exec(float64(vmInfos[e.Name].IOPSSSD), e.Name)
+						//fmt.Printf("[[%v]]\n", res)
 						if err != nil {
 							log.Fatalf("IOPSSDchan db error: %v\n", err)
 						}
@@ -432,8 +439,8 @@ func main() {
 					log.Fatalf("dberror: %v\n", err)
 				}
 				// defer stmt.Close()
-				res, err := stmt.Exec(float64(vmInfos[x.Name].IOPS), x.Name)
-				fmt.Printf("[[%v]]\n", res)
+				_, err = stmt.Exec(float64(vmInfos[x.Name].IOPS), x.Name)
+				// fmt.Printf("[[%v]]\n", res)
 				if err != nil {
 					panic(err)
 				}
@@ -461,6 +468,29 @@ func main() {
 					}
 				}
 				// fmt.Printf("--> [%v]\n", vmInfos[x.Name])
+				txn, err := db.Begin()
+				if err != nil {
+					log.Fatalf("dberr: %v\n", err)
+				}
+				defer txn.Rollback()
+				stmt, err := txn.Prepare(`update tiramisu_state set latency=$1 where vm_name=$2`)
+				if err != nil {
+					log.Fatalf("dberror: %v\n", err)
+				}
+				// defer stmt.Close()
+				_, err = stmt.Exec(float64(vmInfos[x.Name].LatencyRead), x.Name)
+				// fmt.Printf("[[%v]]\n", res)
+				if err != nil {
+					panic(err)
+				}
+				// err = stmt.Close()
+				// if err != nil {
+				// 	log.Fatalf("dberr %v\n", err)
+				// }
+				err = txn.Commit()
+				if err != nil {
+					log.Fatalf("dberr %v\n", err)
+				}
 			case x := <-vmLatencyWriteInfoChan:
 				// If exist
 				if _, ok := vmInfos[x.Name]; ok {
@@ -479,6 +509,48 @@ func main() {
 				fmt.Printf("latency read c = %v v = %v\n", x.Count, x.Value)
 			case x := <-latencyWriteChan:
 				fmt.Printf("latency write c = %v v = %v\n", x.Count, x.Value)
+			}
+		}
+		// After Select
+		for _, e := range vmInfos {
+
+			txn, err := db.Begin()
+			if err != nil {
+				log.Fatalf("dberr: %v\n", err)
+			}
+			defer txn.Rollback()
+			stmt, err := txn.Prepare(`update tiramisu_state set latency=$1 latency_hdd=$2 latency_ssd=$3 where vm_name=$4`)
+			if err != nil {
+				log.Fatalf("dberror: %v\n", err)
+			}
+			// defer stmt.Close()
+			approx_value := 0
+			if e.ISSSD {
+				approx_value = e.LatencyHDD
+			} else {
+				approx_value = e.LatencySSD
+			}
+			if e.ISSSD {
+				_, err := stmt.Exec(e.Latency, approx_value, e.Latency, e.Name)
+				//fmt.Printf("[[%v]]\n", res)
+				if err != nil {
+					panic(err)
+				}
+			} else {
+				_, err := stmt.Exec(e.Latency, approx_value, e.Latency, e.Name)
+				//fmt.Printf("[[%v]]\n", res)
+				if err != nil {
+					panic(err)
+				}
+			}
+
+			// err = stmt.Close()
+			// if err != nil {
+			// 	log.Fatalf("dberr %v\n", err)
+			// }
+			err = txn.Commit()
+			if err != nil {
+				log.Fatalf("dberr %v\n", err)
 			}
 		}
 	}()
