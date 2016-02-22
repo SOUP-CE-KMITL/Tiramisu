@@ -20,6 +20,7 @@ import (
 )
 
 var mutex = &sync.RWMutex{}
+var wg sync.WaitGroup
 
 type ProcessLatency struct {
 	Timestamp int64  `json:timestamp`
@@ -83,21 +84,24 @@ func timedSIGTERM(p *os.Process, d time.Duration) {
 }
 
 func ProbeLatency(cmd *exec.Cmd, d time.Duration, ch chan Pair, cVM chan VMInformation) {
-	latencyPipe, err := cmd.StdoutPipe()
+	defer wg.Done()
+
+	newcmd := exec.Command(cmd.Path, cmd.Args[1])
+	latencyPipe, err := newcmd.StdoutPipe()
 	if err != nil {
-		log.Fatalf("error: %v\n", err)
+		log.Fatalf("probe latency error: %v\n", err)
 	}
-	err = cmd.Start()
+	err = newcmd.Start()
 	if err != nil {
-		log.Fatalf("error: %v\n", err)
+		log.Fatalf("probestart error: %v\n", err)
 	}
 
-	go timedSIGTERM(cmd.Process, 10*time.Second)
+	go timedSIGTERM(newcmd.Process, d+2*time.Second)
 	latencyJSONDecoder(latencyPipe, d, ch, cVM)
 
-	err = cmd.Wait()
+	err = newcmd.Wait()
 	if err != nil {
-		log.Fatalf("error: %v\n", err)
+		log.Fatalf("cmdWait error: %v\n", err)
 	}
 }
 
@@ -195,12 +199,27 @@ func RestartProcess(cmd *exec.Cmd, d time.Duration, cHDD chan Pair, cSSD chan Pa
 			cmd.Stderr = os.Stderr
 			iopsPipe, err = cmd.StdoutPipe()
 			if err != nil {
-				log.Fatalf("error %v\n", err)
+				log.Fatalf("thiserror %v\n", err)
 			}
 		}
 		status, err = SubRestartProcess(cmd, d, iopsPipe, cHDD, cSSD, cVM)
 		//log.Println("restarting...")
 		//log.Printf("status = %v, error = %v\n", status, err)
+	}
+}
+
+func RunProcessIOPS(cmd *exec.Cmd, d time.Duration, cHDD chan Pair, cSSD chan Pair, cVM chan VMInformation) {
+	defer wg.Done()
+	var iopsPipe io.ReadCloser
+	newcmd := exec.Command(cmd.Path, cmd.Args[1])
+	newcmd.Stderr = os.Stderr
+	iopsPipe, err := newcmd.StdoutPipe()
+	if err != nil {
+		log.Fatalf("the this error %v\n", err)
+	}
+	_, err = SubRestartProcess(newcmd, d, iopsPipe, cHDD, cSSD, cVM)
+	if err != nil {
+		log.Fatalf("thiserr %v\n", err)
 	}
 }
 
@@ -232,7 +251,7 @@ func iopsJSONDecoder(rc io.ReadCloser, cHDD chan Pair, cSSD chan Pair, cVM chan 
 			PIDNumber, err = strconv.Atoi(message.Pid)
 		}
 		if err != nil {
-			log.Fatalf("Error: %v\n", err)
+			log.Fatalf("iopsdecoder Error: %v\n", err)
 		}
 		argsList := GetArguments(PIDNumber)
 		if len(argsList) != 0 {
@@ -282,13 +301,13 @@ func main() {
 	dbinfo := fmt.Sprintf("user=postgres password=12344321 dbname=tiramisu sslmode=disable")
 	db, err := sql.Open("postgres", dbinfo)
 
-	IOPSSSDchan := make(chan Pair, 20)
-	IOPSHDDchan := make(chan Pair, 20)
-	latencyReadChan := make(chan Pair, 20)
-	latencyWriteChan := make(chan Pair, 20)
-	vmIOPSInfoChan := make(chan VMInformation, 20)
-	vmLatencyReadInfoChan := make(chan VMInformation, 20)
-	vmLatencyWriteInfoChan := make(chan VMInformation, 20)
+	IOPSSSDchan := make(chan Pair, 1)
+	IOPSHDDchan := make(chan Pair, 1)
+	latencyReadChan := make(chan Pair, 1)
+	latencyWriteChan := make(chan Pair, 1)
+	vmIOPSInfoChan := make(chan VMInformation, 1)
+	vmLatencyReadInfoChan := make(chan VMInformation, 1)
+	vmLatencyWriteInfoChan := make(chan VMInformation, 1)
 
 	wait := make(chan bool)
 
@@ -318,7 +337,7 @@ func main() {
 
 		err := rows.Scan(&vm_name, &latency, &iops, &latency_hdd, &iops_hdd, &latency_ssd, &iops_ssd)
 		if err != nil {
-			log.Fatalf("error: %v\n", err)
+			log.Fatalf("readrow error: %v\n", err)
 		}
 		fmt.Printf("%12v | %12v | %12v | %12v | %12v | %12v | %12v\n", vm_name, latency, iops, latency_hdd, iops_hdd, latency_ssd, iops_ssd)
 	}
@@ -327,13 +346,38 @@ func main() {
 	iopscmd := exec.Command("stap", "iostat-json.stp")
 	latencyReadCmd := exec.Command("stap", "latency_diskread.stp")
 	latencyWriteCmd := exec.Command("stap", "latency_diskwrite.stp")
+	thecubeCmd := exec.Command("python", "../tiramisu_src/the_cube.py")
 
 	var _ = iopscmd
 	var _ = latencyReadCmd
 	var _ = latencyWriteCmd
-	go RestartProcess(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan, vmIOPSInfoChan)
-	go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, vmLatencyReadInfoChan)
-	// go ProbeLatency(latencyWriteCmd, 8*time.Second, latencyWriteChan, vmLatencyWriteInfoChan)
+	go func() {
+		for {
+			wg.Add(1)
+			go RunProcessIOPS(iopscmd, 8*time.Second, IOPSHDDchan, IOPSSSDchan, vmIOPSInfoChan)
+			wg.Wait()
+			wg.Add(1)
+			go ProbeLatency(latencyReadCmd, 8*time.Second, latencyReadChan, vmLatencyReadInfoChan)
+			wg.Wait()
+			// go ProbeLatency(latencyWriteCmd, 8*time.Second, latencyWriteChan, vmLatencyWriteInfoChan)
+		}
+	}()
+	cubeticker := time.NewTicker(10 * time.Second)
+	go func() {
+		for _ = range cubeticker.C {
+			for _, e := range vmInfos {
+				fmt.Printf("--->%v\n", e.Name)
+				fmt.Printf("--->%v\n", thecubeCmd.Args)
+				fmt.Printf("--->%v\n", thecubeCmd.Path)
+				newcmd := exec.Command(thecubeCmd.Path, thecubeCmd.Args[1], e.Name)
+				newcmd.Stdout = os.Stdout
+				err := newcmd.Run()
+				if err != nil {
+					log.Printf("cube error %v\n", err)
+				}
+			}
+		}
+	}()
 	go func() {
 		for {
 			select {
@@ -457,7 +501,9 @@ func main() {
 				// If exist
 				if _, ok := vmInfos[x.Name]; ok {
 					tmp := vmInfos[x.Name]
-					tmp.LatencyRead = x.Latency
+					if x.Latency != 0 {
+						tmp.LatencyRead = x.Latency
+					}
 					tmp.ISSSD = x.ISSSD
 				} else {
 					vmInfos[x.Name] = VMInformation{
@@ -477,7 +523,9 @@ func main() {
 					log.Fatalf("dberror: %v\n", err)
 				}
 				// defer stmt.Close()
-				_, err = stmt.Exec(float64(vmInfos[x.Name].LatencyRead), x.Name)
+				if vmInfos[x.Name].LatencyRead != 0 {
+					_, err = stmt.Exec(float64(vmInfos[x.Name].LatencyRead), x.Name)
+				}
 				// fmt.Printf("[[%v]]\n", res)
 				if err != nil {
 					panic(err)
