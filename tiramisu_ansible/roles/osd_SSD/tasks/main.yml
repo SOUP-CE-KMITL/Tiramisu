@@ -8,13 +8,13 @@
   args:
     removes: /var/run/ceph
 
-- name: Clear /var/lib/ceph/osd
-  shell: sudo rm -r /var/lib/ceph/osd
-  args:
-    removes: /var/lib/ceph/osd
+#- name: Clear /var/lib/ceph/osd
+#  shell: sudo rm -r *
+#  args:
+#    chdir: /var/lib/ceph/osd/ceph-{{ id }}
 
-- name: unmount SSD
-  shell: umount /var/lib/ceph/osd/ceph-{{ id }}
+#- name: unmount SSD
+#  shell: umount /var/lib/ceph/osd/ceph-{{ id }}
 
 - name: Delete config directory
   shell: sudo rm -r /etc/ceph/
@@ -38,10 +38,10 @@
 - name: Copy keyring file from mon node
   shell: sudo cp ceph.client.admin.keyring /etc/ceph/
 
-- name: Delete old repo
-  shell: sudo rm -rf Tiramisu
-  args:
-    removes: Tiramisu/this_is_dev_branch
+#- name: Delete old repo
+#  shell: sudo rm -rf Tiramisu
+#  args:
+#    removes: Tiramisu/this_is_dev_branch
 
 - name: Clone ceph source code
   shell: git clone --recursive https://github.com/SOUP-CE-KMITL/Tiramisu.git --branch develop
@@ -131,7 +131,7 @@
   shell: sudo mkdir -p /var/lib/ceph/osd/ceph-{{ id }}
 
 - name: mount SSD
-  shell: sudo mount /dev/sdb1 /var/lib/ceph/osd/ceph-{{ id }}
+  shell: sudo mount -o user_xattr /dev/sdb1 /var/lib/ceph/osd/ceph-{{ id }}
 
 - name: Change permission lib ceph
   shell: sudo chmod -R 777 /var/lib/ceph/osd/ceph-{{ id }}/
