@@ -1,5 +1,5 @@
 ---
-- hosts: hp6
+- hosts: dell4
 
   remote_user: ceph
 

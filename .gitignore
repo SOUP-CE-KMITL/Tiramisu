@@ -1,3 +1,6 @@
+/tiramisu_src/image/*
+/tiramisu_src/init_vm/config_staic_ip
+
 *.o
 *.lo
 *.a

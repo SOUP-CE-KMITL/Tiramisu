@@ -1,16 +1,16 @@
-[hp7]
-10.0.1.7
+[dell2]
+10.0.1.12
 
-[hp7:vars]
+[dell2:vars]
 fsid=391ff398-592c-41ff-bdaf-a5f9ecd0eb3b
 id=0
-host_mon=hp6
-addr_mon=10.0.1.6
-addr_osd_0=10.0.1.7
-addr_osd_1=10.0.1.7
+host_mon=dell4
+addr_mon=10.0.1.14
+addr_osd_0=10.0.1.12
+addr_osd_1=10.0.1.16
 addr_osd_2=10.0.1.14
-host=hp7
-host_addr=10.0.1.7
+host=dell2
+host_addr=10.0.1.12
 
 [dell4]
 10.0.1.14
@@ -18,38 +18,38 @@ host_addr=10.0.1.7
 [dell4:vars]
 fsid=391ff398-592c-41ff-bdaf-a5f9ecd0eb3b
 id=2
-host_mon=hp6
-addr_mon=10.0.1.6
-addr_osd_0=10.0.1.7
-addr_osd_1=10.0.1.7
+host_mon=dell4
+addr_mon=10.0.1.14
+addr_osd_0=10.0.1.12
+addr_osd_1=10.0.1.16
 addr_osd_2=10.0.1.14
 host=dell4
 host_addr=10.0.1.14
 
-[hp6]
-10.0.1.6
+[dell6]
+10.0.1.16
 
 [hp6:vars]
 fsid=391ff398-592c-41ff-bdaf-a5f9ecd0eb3b
 id=1
-host_mon=hp6
-addr_mon=10.0.1.6
-addr_osd_0=10.0.1.7
-addr_osd_1=10.0.1.7
+host_mon=dell4
+addr_mon=10.0.1.14
+addr_osd_0=10.0.1.12
+addr_osd_1=10.0.1.16
 addr_osd_2=10.0.1.14
-host=hp6
-host_addr=10.0.1.6
+host=dell6
+host_addr=10.0.1.16
 
-[hp1]
-10.0.1.1
+[dell7]
+10.0.1.17
 
-[hp1:vars]
+[dell7:vars]
 fsid=391ff398-592c-41ff-bdaf-a5f9ecd0eb3b
-host_mon=hp6
-addr_mon=10.0.1.6
-addr_osd_0=10.0.1.7
-addr_osd_1=10.0.1.7
+host_mon=dell4
+addr_mon=10.0.1.14
+addr_osd_0=10.0.1.12
+addr_osd_1=10.0.1.16
 addr_osd_2=10.0.1.14
-host=hp1
-host_addr=10.0.1.1
+host=dell7
+host_addr=10.0.1.17
 

@@ -1,0 +1,14 @@
+#!/usr/bin/env stap
+
+global list
+
+probe kernel.function("vfs_open") {
+#probe vfs.read {
+   	list[pid(), ppid()] = gettimeofday_us()		
+}
+
+probe kernel.function("vfs_open").return {
+#probe vfs.read.return {
+	if([pid(),ppid()] in list)
+		printf("%s, PID %d, PPID %d, %s,  Latency  %d sec\n", ctime(gettimeofday_s()) ,  pid(), ppid(), execname(), gettimeofday_us()-list[pid(),ppid()])
+}
