@@ -70,12 +70,22 @@ c.execute("select size from tiramisu_vm where name=%s", (name,))
 size = c.fetchone()
 if new_pool=='HDD':
     cost = float(size[0]) * cost_mb_HDD
+    c.execute("select latency_hdd from tiramisu_state where vm_name=%s", (name,))
+    latency = c.fetchone()
+    c.execute("select iops_hdd from tiramisu_state where vm_name=%s", (name,))
+    iops = c.fetchone()
 else:
     cost = float(size[0]) * cost_mb_SSD
+    c.execute("select latency_ssd from tiramisu_state where vm_name=%s", (name,))
+    latency = c.fetchone()
+    c.execute("select iops_ssd from tiramisu_state where vm_name=%s", (name,))
+    iops = c.fetchone()
 
 print "########## Start complete ##########"
 
+
 c.execute("update tiramisu_vm set status=1,cost=%s where name=%s",(cost,name,))
 c.execute("update tiramisu_storage set current_pool=%s where vm_name=%s",(new_pool,name,))
+c.execute("update tiramisu_state set latency=%s,iops=%s where vm_name=%s",(latency,iops,name))
 conn.commit()
 c.close()
