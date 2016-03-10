@@ -16,7 +16,7 @@ if __name__ == "__main__":
 	name_display	= arg[2]
 	id_owner		= arg[3]
 
-	command = "cp ../image/HDD/default ../image/HDD/" + name
+	command = "rbd cp HDD/default HDD/" + name
 	print(command)
 	os.system(command)
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
 	print(command)
 	os.system(command)
 
-	command = "sed -i -e 's/\/image\/HDD\/default/\/image\/HDD\/" + name + "/g' ../image/config/" + name + ".xml"
+	command = "sed -i -e 's/HDD\/default/HDD\/" + name + "/g' ../image/config/" + name + ".xml"
 	print(command)
 	os.system(command)
 

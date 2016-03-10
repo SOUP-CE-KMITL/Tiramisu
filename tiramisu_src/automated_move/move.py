@@ -48,13 +48,13 @@ c.execute("select * from tiramisu_storage where vm_name=%s",(name,))
 data = c.fetchone()
 old_pool = data[1]
 new_pool = data[2]
-command1 = "sudo cp ../image/" + old_pool + "/" + name + " ../image/" + new_pool + "/" + name
-command2 = "sudo rm -f ../image/" + old_pool + "/" + name
+command1 = "rbd cp " + old_pool + "/" + name + " " + new_pool + "/" + name
+command2 = "rbd rm " + old_pool + "/" + name
 command = command1 + " && " + command2
 print(command)
 os.system(command)
 
-command = "sed -i -e 's/\/image\/" + old_pool + "\/" + name + "/\/image\/" + new_pool + "\/" + name + "/g' ../image/config/" + name + ".xml"
+command = "sed -i -e 's/" + old_pool + "\/" + name + "/" + new_pool + "\/" + name + "/g' ../image/config/" + name + ".xml"
 print(command)
 os.system(command)
 

@@ -6,7 +6,7 @@ import sys
 try:
 	conn = psycopg2.connect(database='tiramisu', user='postgres', host='localhost', port='5432', password='12344321')
 except:
-	print "Nooooooooo"
+	print "Can't connect db"
 
 c = conn.cursor()
 
@@ -42,7 +42,7 @@ os.system(command)
 c.execute("select * from tiramisu_storage where vm_name=%s",(name,))
 data = c.fetchone()
 old_pool = data[1]
-command = "sudo rm -f image/" + old_pool + "/" + name
+command = "rbd rm " + old_pool + "/" + name
 print(command)
 os.system(command)
 
