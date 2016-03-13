@@ -18,6 +18,9 @@ cost_mb_HDD = 0.050
 
 c.execute("select status from tiramisu_vm where name=%s", (name,))
 status = c.fetchone()
+c.execute("update tiramisu_vm set status=0 where name=%s", (name,))
+conn.commit()
+
 if status[0] == 1:
     command = "sudo virsh shutdown " + name
     os.system(command)
@@ -28,7 +31,7 @@ if status[0] == 1:
         status, err = p.communicate()
         if status == "shut":
             print "########## shut down complete ##########"
-            c.execute("update tiramisu_vm set status=0 where name=%s", (name,))
+            # c.execute("update tiramisu_vm set status=0 where name=%s", (name,))
             break
         else:
             command = "sudo virsh shutdown " + name
