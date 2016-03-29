@@ -14,4 +14,7 @@ func main() {
 	}
 	fmt.Printf("%v\n", db.HasTable("tiramisu_state"))
 	db.AutoMigrate(&VMstate{})
+	var listVM []VMstate
+	db.Find(&listVM)
+	fmt.Printf("%v\n%T\n", listVM, listVM)
 }
