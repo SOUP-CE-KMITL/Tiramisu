@@ -234,6 +234,17 @@ if __name__ == "__main__":
 	requirements = requirements(name, c)
 	cube = cube(name, c)
 
+	if (cube["latency"] == 0.0):
+		cube["latency"] = 1
+
+	if (cube["iops"] == 0.0):
+                cube["iops"] = 1
+
+	if (cube["cost"] == 0.0):
+                cube["cost"] = 1
+
+	
+
 	c.execute("select * from tiramisu_vm where name=%s", (name,))
 	vm_details = c.fetchone()
 	c.execute("select * from tiramisu_storage where vm_name=%s", (name,))
