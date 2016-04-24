@@ -224,8 +224,6 @@ if __name__ == "__main__":
 	name 		= arg[1]
 
 	get_state = get_state(name, c)
-	latency_vm 	= get_state["latency_vm"]
-	iops_vm 	= get_state["iops_vm"]
 	latency_hdd	= get_state["latency_hdd"]
 	iops_hdd 	= get_state["iops_hdd"]
 	latency_ssd	= get_state["latency_ssd"]
@@ -254,12 +252,8 @@ if __name__ == "__main__":
 	cost_SSD = cal_cost(cost_mb_SSD, get_size_vm)
 	cost_HDD = cal_cost(cost_mb_HDD, get_size_vm)
 
-	if storage_vm[1] == 'SSD':
-		point_storage = { 	"SSD" : [latency_vm, iops_vm, cost_SSD],
-							"HDD" : [latency_hdd, iops_hdd, cost_HDD] }
-	else:
-		point_storage = { 	"SSD" : [latency_ssd, iops_ssd, cost_SSD],
-							"HDD" : [latency_vm, iops_vm, cost_HDD] }
+	point_storage = { 	"SSD" : [latency_ssd, iops_ssd, cost_SSD],
+ 						"HDD" : [latency_hdd, iops_hdd, cost_HDD] }
 
 	c.execute("select current_pool from tiramisu_storage where vm_name=%s", (name,))
 	pool = c.fetchone()

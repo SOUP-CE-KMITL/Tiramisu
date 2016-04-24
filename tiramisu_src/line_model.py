@@ -37,38 +37,43 @@ if __name__ == "__main__":
 	latency_ssd	= get_state["latency_ssd"]
 	iops_ssd 	= get_state["iops_ssd"]
 
+	# latency_vm 	= 5
+	# iops_vm 	= 1000
+	# latency_hdd	= 15
+	# iops_hdd 	= 800
+	# latency_ssd	= 4
+	# iops_ssd 	= 3000
+
 	state_iops = { 	"SSD" : iops_ssd,
 					"HDD" : iops_hdd }
 
 	state_latency = { 	"SSD" : latency_ssd,
 						"HDD" : latency_hdd }
 
-	cost = {	"SSD" = 773.0937,
-				"HDD" = 429.49	}
-
 	# set default value to cheap storage
-	ans_iops = "HDD"
+	ans_iops = "SSD"
 	ans_latency = "HDD"
 	ans = "HDD"
 
 	# line of iops
 	for i in sorted(state_iops, key=state_iops.get, reverse=False):
 		# sorted min to max
-		print i, state_iops[i]
 		if iops_vm <= state_iops[i]:
 			ans_iops = i
 			break
 
 	# line of latency
-	for j in sorted(state_latency, key=state_latency.get, reverse=True):
-		# sorted max to min
-		print j, state_latency[j]
+	for j in sorted(state_latency, key=state_latency.get, reverse=False):
+		# sorted min to max
 		if latency_vm <= state_latency[j]:
 			ans_latency = j
 			break
 
+	print "iops",ans_iops
+	print "latency",ans_latency
+
 	if ans_latency != ans_iops:
-		ans = "HDD"
+		ans = "SSD"
 	else:
 		ans = ans_iops
 
@@ -79,5 +84,6 @@ if __name__ == "__main__":
 	if ans != current:
 		c.execute("update tiramisu_storage set appropiate_pool=%s where vm_name=%s",(ans,name,))
 	
+	print ans
 	conn.commit()
 	c.close()
