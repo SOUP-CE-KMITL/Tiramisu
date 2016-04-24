@@ -13,7 +13,7 @@ import (
 const MainPeriod = 10 * time.Second
 
 func RunTheCube(ticker *time.Ticker) {
-	cubeCmd := exec.Command("python", "../tiramisu_src/the_cube.py")
+	cubeCmd := exec.Command("python", "../tiramisu_src/line_model.py")
 	var vms []corgis.TiramisuState
 
 	for _ = range ticker.C {
