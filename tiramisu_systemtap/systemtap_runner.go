@@ -12,6 +12,27 @@ import (
 
 const MainPeriod = 10 * time.Second
 
+func RunTheCube(ticker *time.Ticker) {
+	cubeCmd := exec.Command("python", "../tiramisu_src/the_cube.py")
+	var vms []corgis.TiramisuState
+
+	for _ = range ticker.C {
+		corgis.DB.Table("tiramisu_state").Select("vm_name").Find(&vms)
+		log.Println("ticked cube")
+		fmt.Printf("vms length: %v\n", len(vms))
+		for i, e := range vms {
+			fmt.Printf("cube [%v]: %v\n:", i, e.Name)
+			newcmd := exec.Command(cubeCmd.Path, cubeCmd.Args[1], e.Name)
+			newcmd.Stdout = os.Stdout
+			err := newcmd.Run()
+			if err != nil {
+				log.Printf("cube error: %v\n", err)
+			}
+		}
+	}
+	fmt.Printf("should never been here\n")
+}
+
 func main() {
 	task := corgis.JobScheduler{}
 	task.Cmd = exec.Command("stap", "iostat-json.stp")
@@ -42,28 +63,27 @@ func main() {
 	assignticker := time.NewTicker(MainPeriod)
 	cubeticker := time.NewTicker(MainPeriod)
 
-	go func(ticker *time.Ticker) {
-		cubeCmd := exec.Command("python", "../tiramisu_src/the_cube.py")
-		var vms []corgis.TiramisuState
+	go RunTheCube(cubeticker)
+	// go func(ticker *time.Ticker) {
+	// 	cubeCmd := exec.Command("python", "../tiramisu_src/the_cube.py")
+	// 	var vms []corgis.TiramisuState
 
-		for _ = range ticker.C {
-			corgis.DB.Table("tiramisu_state").Select("vm_name").Find(&vms)
-			log.Println("ticked cube")
-			fmt.Printf("vms length: %v\n", len(vms))
-			for i, e := range vms {
-				fmt.Printf("cube [%v]: %v\n:", i, e.Name)
-				newcmd := exec.Command(cubeCmd.Path, cubeCmd.Args[1], e.Name)
-				newcmd.Stdout = os.Stdout
-				err := newcmd.Run()
-				if err != nil {
-					log.Printf("cube error: %v\n", err)
-				}
-				//fmt.Printf("does this run?\n")
-			}
-			//fmt.Printf("just outside for\n")
-		}
-		fmt.Printf("should never been here\n")
-	}(cubeticker)
+	// 	for _ = range ticker.C {
+	// 		corgis.DB.Table("tiramisu_state").Select("vm_name").Find(&vms)
+	// 		log.Println("ticked cube")
+	// 		fmt.Printf("vms length: %v\n", len(vms))
+	// 		for i, e := range vms {
+	// 			fmt.Printf("cube [%v]: %v\n:", i, e.Name)
+	// 			newcmd := exec.Command(cubeCmd.Path, cubeCmd.Args[1], e.Name)
+	// 			newcmd.Stdout = os.Stdout
+	// 			err := newcmd.Run()
+	// 			if err != nil {
+	// 				log.Printf("cube error: %v\n", err)
+	// 			}
+	// 		}
+	// 	}
+	// 	fmt.Printf("should never been here\n")
+	// }(cubeticker)
 
 	go func(ticker *time.Ticker) {
 		for _ = range ticker.C {
