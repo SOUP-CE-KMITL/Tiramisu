@@ -64,26 +64,6 @@ func main() {
 	cubeticker := time.NewTicker(MainPeriod)
 
 	go RunTheCube(cubeticker)
-	// go func(ticker *time.Ticker) {
-	// 	cubeCmd := exec.Command("python", "../tiramisu_src/the_cube.py")
-	// 	var vms []corgis.TiramisuState
-
-	// 	for _ = range ticker.C {
-	// 		corgis.DB.Table("tiramisu_state").Select("vm_name").Find(&vms)
-	// 		log.Println("ticked cube")
-	// 		fmt.Printf("vms length: %v\n", len(vms))
-	// 		for i, e := range vms {
-	// 			fmt.Printf("cube [%v]: %v\n:", i, e.Name)
-	// 			newcmd := exec.Command(cubeCmd.Path, cubeCmd.Args[1], e.Name)
-	// 			newcmd.Stdout = os.Stdout
-	// 			err := newcmd.Run()
-	// 			if err != nil {
-	// 				log.Printf("cube error: %v\n", err)
-	// 			}
-	// 		}
-	// 	}
-	// 	fmt.Printf("should never been here\n")
-	// }(cubeticker)
 
 	go func(ticker *time.Ticker) {
 		for _ = range ticker.C {
