@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 	"os/exec"
 	"time"
 
@@ -11,6 +10,8 @@ import (
 )
 
 const MainPeriod = 10 * time.Second
+const AssignPeriod = 10 * time.Second
+const PostmarkPeriod = 10 * time.Minute
 
 func RunTheCube(ticker *time.Ticker) {
 	cubeCmd := exec.Command("python", "../tiramisu_src/line_model.py")
@@ -23,7 +24,7 @@ func RunTheCube(ticker *time.Ticker) {
 		for i, e := range vms {
 			fmt.Printf("cube [%v]: %v\n:", i, e.Name)
 			newcmd := exec.Command(cubeCmd.Path, cubeCmd.Args[1], e.Name)
-			newcmd.Stdout = os.Stdout
+			//newcmd.Stdout = os.Stdout
 			err := newcmd.Run()
 			if err != nil {
 				log.Printf("cube error: %v\n", err)
@@ -60,16 +61,26 @@ func main() {
 	task3.Muffled = true
 	go task3.Execute()
 
-	assignticker := time.NewTicker(MainPeriod)
+	go corgis.HttpServe()
+
+	assignticker := time.NewTicker(AssignPeriod)
 	cubeticker := time.NewTicker(MainPeriod)
+	postmarkticker := time.NewTicker(PostmarkPeriod)
 
 	go RunTheCube(cubeticker)
 
 	go func(ticker *time.Ticker) {
 		for _ = range ticker.C {
-			corgis.AssignAverage()
+			corgis.AssignState()
 		}
 	}(assignticker)
+
+	go func(ticker *time.Ticker) {
+		for _ = range ticker.C {
+			go corgis.CallPostmark("HDD")
+			go corgis.CallPostmark("SSD")
+		}
+	}(postmarkticker)
 
 	c := make(chan bool)
 	var _ = <-c
