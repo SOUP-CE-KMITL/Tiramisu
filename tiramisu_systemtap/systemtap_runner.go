@@ -11,7 +11,7 @@ import (
 
 const MainPeriod = 10 * time.Second
 const AssignPeriod = 10 * time.Second
-const PostmarkPeriod = 10 * time.Minute
+const PostmarkPeriod = 20 * time.Minute
 
 func RunTheCube(ticker *time.Ticker) {
 	cubeCmd := exec.Command("python", "../tiramisu_src/line_model.py")
@@ -19,15 +19,13 @@ func RunTheCube(ticker *time.Ticker) {
 
 	for _ = range ticker.C {
 		corgis.DB.Table("tiramisu_state").Select("vm_name").Find(&vms)
-		log.Println("ticked cube")
-		fmt.Printf("vms length: %v\n", len(vms))
-		for i, e := range vms {
-			fmt.Printf("cube [%v]: %v\n:", i, e.Name)
+		// fmt.Printf("vms length: %v\n", len(vms))
+		for _, e := range vms {
 			newcmd := exec.Command(cubeCmd.Path, cubeCmd.Args[1], e.Name)
 			//newcmd.Stdout = os.Stdout
 			err := newcmd.Run()
 			if err != nil {
-				log.Printf("cube error: %v\n", err)
+				log.Printf("%v: linemodel error: %v\n", e.Name, err)
 			}
 		}
 	}

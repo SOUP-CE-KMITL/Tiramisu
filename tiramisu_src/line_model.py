@@ -63,26 +63,26 @@ if __name__ == "__main__":
 			break
 
 	# line of latency
-	for j in sorted(state_latency, key=state_latency.get, reverse=False):
+	# for j in sorted(state_latency, key=state_latency.get, reverse=False):
 		# sorted min to max
-		if latency_vm <= state_latency[j]:
-			ans_latency = j
-			break
+		# if latency_vm <= state_latency[j]:
+			# ans_latency = j
+			# break
 
 	print "iops",ans_iops
-	print "latency",ans_latency
+	# print "latency",ans_latency
 
-	if ans_latency != ans_iops:
-		ans = "SSD"
-	else:
-		ans = ans_iops
+	# if ans_latency != ans_iops:
+		# ans = "SSD"
+	# else:
+	ans = ans_iops
 
 	c.execute("select current_pool from tiramisu_storage where vm_name=%s", (name,))
 	pool = c.fetchone()
 	current = pool[0]
 
-	if ans != current:
-		c.execute("update tiramisu_storage set appropiate_pool=%s where vm_name=%s",(ans,name,))
+	# if ans != current:
+	c.execute("update tiramisu_storage set appropiate_pool=%s where vm_name=%s",(ans,name,))
 	
 	print ans
 	conn.commit()
